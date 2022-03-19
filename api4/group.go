@@ -94,29 +94,55 @@ func (api *API) InitGroup() {
 }
 
 func getGroup(c *Context, w http.ResponseWriter, r *http.Request) {
-	c.RequireGroupId()
-	if c.Err != nil {
-		return
-	}
-
-	group, err := c.App.GetGroup(c.Params.GroupId, &model.GetGroupOpts{
-		IncludeMemberCount: c.Params.IncludeMemberCount,
+	validationHandler := newRequestHandler(func(ctx *Context, req *http.Request, data interface{}, setData func(interface{})) {
+		ctx.RequireGroupId()
 	})
-	if err != nil {
-		c.Err = err
-		return
-	}
 
-	if group.Source == model.GroupSourceLdap {
-		if !c.App.SessionHasPermissionToGroup(*c.AppContext.Session(), c.Params.GroupId, model.PermissionSysconsoleReadUserManagementGroups) {
-			c.SetPermissionError(model.PermissionSysconsoleReadUserManagementGroups)
+	appHandler := newRequestHandler(func(ctx *Context, req *http.Request, data interface{}, setData func(interface{})) {
+		group, err := ctx.App.GetGroup(c.Params.GroupId, &model.GetGroupOpts{
+			IncludeMemberCount: c.Params.IncludeMemberCount,
+		})
+		if err != nil {
+			c.Err = err
 			return
 		}
-	}
+		setData(group)
+	})
 
-	if lcErr := licensedAndConfiguredForGroupBySource(c.App, group.Source); lcErr != nil {
-		lcErr.Where = "Api4.getGroup"
-		c.Err = lcErr
+	authnHandler := newRequestHandler(func(ctx *Context, req *http.Request, data interface{}, setData func(interface{})) {
+		group, ok := data.(*model.Group)
+		if !ok {
+			ctx.Err = model.NewAppError("getGroup", "handler.error.data_type", nil, "", http.StatusInternalServerError)
+			return
+		}
+		if group.Source == model.GroupSourceLdap {
+			if !ctx.App.SessionHasPermissionToGroup(*ctx.AppContext.Session(), ctx.Params.GroupId, model.PermissionSysconsoleReadUserManagementGroups) {
+				ctx.SetPermissionError(model.PermissionSysconsoleReadUserManagementGroups)
+			}
+		}
+	})
+
+	licenseHandler := newRequestHandler(func(ctx *Context, req *http.Request, data interface{}, setData func(interface{})) {
+		group, ok := data.(*model.Group)
+		if !ok {
+			ctx.Err = model.NewAppError("getGroup", "handler.error.data_type", nil, "", http.StatusInternalServerError)
+			return
+		}
+		if lcErr := licensedAndConfiguredForGroupBySource(ctx.App, group.Source); lcErr != nil {
+			lcErr.Where = "Api4.getGroup"
+			ctx.Err = lcErr
+		}
+	})
+
+	group := validationHandler.then(
+		appHandler.then(
+			authnHandler.then(
+				licenseHandler,
+			),
+		),
+	).execute(c, r, nil).getData()
+
+	if c.Err != nil {
 		return
 	}
 
