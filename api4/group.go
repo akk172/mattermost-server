@@ -99,11 +99,11 @@ func getGroup(c *Context, w http.ResponseWriter, r *http.Request) {
 	})
 
 	appHandler := newRequestHandler(func(ctx *Context, req *http.Request, data interface{}, setData func(interface{})) {
-		group, err := ctx.App.GetGroup(c.Params.GroupId, &model.GetGroupOpts{
-			IncludeMemberCount: c.Params.IncludeMemberCount,
+		group, err := ctx.App.GetGroup(ctx.Params.GroupId, &model.GetGroupOpts{
+			IncludeMemberCount: ctx.Params.IncludeMemberCount,
 		})
 		if err != nil {
-			c.Err = err
+			ctx.Err = err
 			return
 		}
 		setData(group)
