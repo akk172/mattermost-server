@@ -221,6 +221,8 @@ services:
         condition: service_healthy
     ports:
       - "8065:8065"
+    labels:
+      shipyard.route: '/'
 
 networks:
   mm-test:
